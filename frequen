@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+import sys
+
+class ragL(list):
+    def __init__(self, lookup):
+        self.lookup = lookup
+        self.N = int(len(lookup))
+        super().__init__(self)
+        self += [0] * int(self.N * (self.N - 1) / 2)
+    @staticmethod
+    def ij(i, j):
+        if i == j:
+            print('i & j cannot be equal in ragL lists')
+            exit()
+        if i > j:
+            c = j
+            j = i
+            i = c
+        return (i, j)
+    def get(self, i, j):
+        i, j = ragL.ij(i, j)
+        return self[int((i - 1) * (self.N - i / 2) + j - i)]
+    def getit(self, item1, item2):
+        return self.get(self.lookup[item1], self.lookup[item2])
+    def seter(self, i, j, val):
+        i, j = ragL.ij(i,j)
+        self[int((i - 1) * (self.N - i / 2) + j - i)] = val
+    def setit(self, item1, item2, val):
+        return self.set(self.lookup[item1], self.lookup[item2])
+    def increment(self, i, j):
+        if i == j: return
+        i, j = ragL.ij(i,j)
+        self[int((i - 1) * (self.N - i / 2) + j - i)] += 1
+    def incrementit(self, item1, item2):
+        return self.increment(self.lookup[item1], self.lookup[item2])
+
+def readf(filename, sep):
+    buckets = []
+    print(' -- ' + filename + ' -- ')
+    f = open(filename, 'r')
+    line = f.readline()
+    while line != None and line != '':
+        line = line.split(sep)
+        if line[-1] == ' ' or line[-1] == '\n':
+            line = line[0:-1]
+#        for item in line:
+#            if items.get(item) == None:
+#                items[item] = 1
+#            else:
+#                items[item] += 1
+        buckets.append(tuple(line))
+        line = f.readline()
+    return buckets
+
+def parseBuckets(buckets, candidates):
+    candCounts = {cand : 0 for cand in candidates}
+    for bucket in buckets:
+        for key in candCounts.keys():
+            bucket = set(bucket)
+            if set(key).issubset(bucket):
+                candCounts[key] += 1
+    return candCounts
+
+
+#get candidates for gens after 2
+def nextGen(itemSets):
+    nextSize = len(itemSets[0]) + 1
+    newSets = {}
+    for num, itemA in enumerate(itemSets):
+        num2 = num + 1
+        while num2 < len(itemSets):
+            product = set(itemA)
+            itemB = list(itemSets[num2])
+            product.update(itemB)
+            product = list(product)
+            if len(product) == nextSize:
+                product=tuple(sorted(product))
+                if newSets.get(product) == None:
+                    newSets[product] = 1
+                else:
+                    newSets[product] += 1
+            num2 = num2+1
+    returner = []
+    for kset in newSets.keys():
+        if newSets[kset] >= nextSize:
+            returner += [kset]
+    return returner
+
+#read from buckets for candidates. Counted too for efficiency
+def firstGen(buckets):
+    items = {}
+    for bucket in buckets:
+        for item in bucket:
+            if items.get(item) == None:
+                items[item] = 1
+            else:
+                items[item] += 1
+    return items
+
+#populates raggy on all pairs of frequent items
+def populateTable(buckets, raggy):
+    freqItems = {a for a in raggy.lookup.keys()}
+    for bucket in buckets:
+        itemsOfInterest = []
+        for fi in bucket:
+            if fi in freqItems:
+                itemsOfInterest.append(fi)
+        firstPlace = 0
+        while firstPlace < len(itemsOfInterest):
+            secondPlace = firstPlace + 1
+            while secondPlace < len(itemsOfInterest):
+                raggy.incrementit(itemsOfInterest[firstPlace], itemsOfInterest[secondPlace])
+                secondPlace = secondPlace + 1
+            firstPlace = firstPlace + 1
+
+#using raggy, this function parses the list for frequent pairs
+def getFreqPairs(raggy, freq):
+    items = [0] * raggy.N
+    for key in raggy.lookup.keys():
+        items[raggy.lookup[key]] = key
+    itemList = []
+    i = 0
+    while i < raggy.N:
+        j=i+1
+        while j < raggy.N:
+            if raggy.get(i, j) >= freq:
+                itemList+=[(items[i], items[j])]
+            j=j+1
+        i=i+1
+    return itemList
+
+def confidence(buckets, causalSet, reactionarySet):
+    causalSet = set(causalSet)
+    reactionarySet = set(reactionarySet)
+    proves = 0
+    total = 0
+    for bucket in buckets:
+        if causalSet.issubset(set(bucket)):
+            total += 1
+            if reactionarySet.issubset(set(bucket)):
+                proves += 1
+    if total == 0:
+        return -1
+    return proves / total
+
+def analyzeItemset(file, itemset, buckets):
+    def pickOneAsReact(buckets, items):
+        num = 0
+        tempList = {}
+        items = list(items)
+        for item in items:
+            tItems = items.copy()
+            tItems.remove(item)
+            tempList.update({confidence(buckets, tItems, [item]): (tItems, item)})
+        return tempList
+    results = {}
+    for leSet in itemSets:
+        results.update(pickOneAsReact(buckets, leSet))
+    file.write('itemset length: ' + str(len(list(itemSets[0]))))
+    for key in sorted(list(results.keys())):
+        file.write('\t' + str(key) + '\t' + str(results[key]))
+        file.write('\n')
+
+if __name__ == "__main__":
+    #browsingdata = readf('browsingdata.txt', ' ')
+    freq = int(sys.argv[1]) #int(input('please enter the frequent item threshold: '))
+    print('item threshold: ' + str(freq))
+    totalGen = int(sys.argv[2])#int(input('please enter the itemset size (2+): '))
+    print('max itemset size: ' + str(totalGen))
+    buckets = readf(sys.argv[3], ' ')#readf(input('file?'), ' ')
+    gen = 0
+
+    items = firstGen(buckets)  # get all items possible (scan), gets count too. Returns library item:count
+    items = {a for a in items.keys() if items[a] >= freq}  # parse for frequency (harvest)
+    itemLookUp = {a[1]: a[0] for a in enumerate(sorted(items))}  # construct reference table item:position
+
+    raggy = ragL(itemLookUp) #create a flattened ragged list using lookup.
+    populateTable(buckets, raggy) # parse bucket store in raggy
+    itemSets = getFreqPairs(raggy, freq)
+    file = open('output.txt', 'w')
+    print('setsize 2: ' + str(itemSets))
+    analyzeItemset(file, itemSets, buckets)
+    gen = 3
+    while gen <= totalGen:
+        itemSets = nextGen(itemSets)
+        itemSets = parseBuckets(buckets, itemSets)
+        itemSets = [a for a in itemSets.keys() if itemSets[a] >= freq]
+        print('setsize ' + str(gen) + ': ' + str(itemSets))
+        gen += 1
+        if len(itemSets) == 0:
+            print('no more setsizes match freq')
+            break
+        analyzeItemset(file, itemSets, buckets)
+    file.close()
+
+#    if input('input custom confidence parameters? (y/n)') == 'y':
+#        while True:
+#            try:
+#                a = set()
+#                line = input('please enter causal: ')
+#                while line != '':
+#                    a.add(line)
+#                    line = input('next or empty to continue: ')
+#                line = input('please enter reactionary: ')
+#                b = set()
+#                while line != '':
+#                    b.add(line)
+#                    line = input('next or empty to continue: ')
+#                print('conf is: ' + str(confidence(buckets, a, b)))
+#            except:
+#                print('something went wrong')
+#            if input('wanna break? (y/n)') == 'y':
+#                break
+#            #itemSets =
+            #get combinations ok k+1 that are supported by k (iterate on k^2 checking each k possibilities with a library).
+            #check for count of each item in bucket.
+            #Rinse Repeat
+
+            #raggy = ragL(lookUp) #use reference table to make ragged table
+            #itemsets = nextGen(raggy) # get itemsets of k+1 using k
